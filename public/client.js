@@ -1,165 +1,79 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const registerButton = document.getElementById('registerButton');
-    const authenticateButton = document.getElementById('authenticateButton');
+const challengeBuffer = new Uint8Array([
+    0x8c, 0x0a, 0x26, 0xff, 0x22, 0x91, 0xc1, 0xe9, 0xb9, 0x4e, 0x2e, 0x17, 0x1a,
+    0x98, 0x6a, 0x73, 0x71, 0x9d, 0x43, 0x48, 0xd5, 0xa7, 0x6a, 0x15, 0x7e, 0x38,
+    0x94, 0x52, 0x77, 0x97, 0x0f, 0xef,
+]).buffer;
 
-    registerButton.addEventListener('click', () => {
-        register();
-    });
+let userIdBuffer = new Uint8Array([
+    0x79, 0x50, 0x68, 0x71, 0xda, 0xee, 0xee, 0xb9, 0x94, 0xc3, 0xc2, 0x15, 0x67,
+    0x65, 0x26, 0x22, 0xe3, 0xf3, 0xab, 0x3b, 0x78, 0x2e, 0xd5, 0x6f, 0x81, 0x26,
+    0xe2, 0xa6, 0x01, 0x7d, 0x74, 0x50,
+]).buffer;
 
-    authenticateButton.addEventListener('click', () => {
-        authenticate();
-    });
+const options = {
+    publicKey: {
+        rp: { name: 'Example WebAuthn App' },
+        user: {
+            id: userIdBuffer,
+            name: 'Felix',
+            displayName: 'Felix',
+        },
+        challenge: challengeBuffer,
+        pubKeyCredParams: [
+            { type: 'public-key', alg: -7 }, // ES256
+            { type: 'public-key', alg: -257 }, // RS256
+        ],
+        attestation: 'direct',
+        authenticatorSelection: { authenticatorAttachment: 'platform' },
+    },
+};
+
+const registerButton = document.getElementById('registerButton');
+registerButton.addEventListener('click', () => {
+    navigator.credentials.create(options)
+        .then((cred) => {
+            console.log('NEW CREDENTIAL', cred);
+            console.log('userIdBuffer', userIdBuffer);
+            userIdBuffer = new Uint8Array(cred.response.attestationObject);
+            console.log('userIdBuffer', userIdBuffer);
+            console.log('cred.response.clientDataJSON', cred.response.clientDataJSON);
+            console.log('cred.rawId', new Int32Array(cred.rawId));
+
+            const idList = [
+                {
+                    id: cred.rawId,
+                    transports: ['ble', 'hybrid', 'internal', 'nfc', 'usb'],
+                    type: 'public-key',
+                },
+            ];
+
+            // Store idList or perform necessary actions
+
+        })
+        .catch((err) => {
+            console.log('ERROR', err);
+        });
 });
 
-function register() {
-    if (!navigator.credentials) {
-        alert('WebAuthn is not supported in this browser.');
-        return;
-    }
+const authenticateButton = document.getElementById('authenticateButton');
+authenticateButton.addEventListener('click', () => {
+    const getCredentialDefaultArgs = {
+        publicKey: {
+            timeout: 60000,
+            challenge: new Uint8Array([
+                0x79, 0x50, 0x68, 0x71, 0xda, 0xee, 0xee, 0xb9, 0x94, 0xc3, 0xc2, 0x15, 0x67,
+                0x65, 0x26, 0x22, 0xe3, 0xf3, 0xab, 0x3b, 0x78, 0x2e, 0xd5, 0x6f, 0x81, 0x26,
+                0xe2, 0xa6, 0x01, 0x7d, 0x74, 0x50,
+            ]).buffer,
+        },
+    };
 
-    // Generate a random challenge
-    const challenge = generateRandomBuffer(32);
-
-    // Make a registration request to the server
-    fetch('/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challenge }),
-    })
-        .then((response) => response.json())
-        .then((data) => {
-            const { publicKey } = data;
-
-            // Convert the base64-encoded public key into an ArrayBuffer
-            const publicKeyArray = base64ToArrayBuffer(publicKey);
-
-            // Convert the challenge into a UInt8Array
-            const challengeArray = new Uint8Array(challenge);
-            // Create the PublicKeyCredentialCreationOptions
-            const options = {
-                publicKey: {
-                    rp: { name: 'Example WebAuthn App' },
-                    user: {
-                        id: publicKeyArray,
-                        name: 'Mahmoud Saad',
-                        displayName: 'Mahmoud Saad',
-                    },
-                    challenge: challengeArray,
-                    pubKeyCredParams: [
-                        { type: 'public-key', alg: -7 }, // ES256
-                        { type: 'public-key', alg: -257 }, // RS256
-                    ],
-                    attestation: 'direct',
-                },
-            };
-            // Call the WebAuthn API to create the credential
-            return navigator.credentials.create(options);
+    navigator.credentials.get(getCredentialDefaultArgs)
+        .then((response) => {
+            console.log(response);
+            // Perform necessary actions with the response
         })
-        .then((credential) => {
-            // Update the publicKey property with the generated credential's publicKey
-            const publicKeyArray = new Uint8Array(
-                credential.response.attestationObject
-            );
-
-            // Convert the publicKey into a base64-encoded string
-            const publicKey = arrayBufferToBase64(publicKeyArray);
-            // Send the registration response to the server
-            return fetch('/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ challenge, publicKey }),
-            });
-        })
-        .then((response) => response.json())
-        .then((data) => {
-            console.log('Registration successful:', data);
-        })
-        .catch((error) => {
-            console.error('Registration failed:', error);
+        .catch((err) => {
+            console.log('ERROR', err);
         });
-}
-
-function authenticate() {
-    if (!navigator.credentials) {
-        alert('WebAuthn is not supported in this browser.');
-        return;
-    }
-
-    // Generate a random challenge
-    const challenge = generateRandomBuffer(32);
-
-    // Make an authentication request to the server
-    fetch('/authenticate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challenge }),
-    })
-        .then((response) => response.json())
-        .then((data) => {
-            const { publicKey } = data;
-
-            // Convert the base64-encoded public key into an ArrayBuffer
-            const publicKeyArray = base64ToArrayBuffer(publicKey);
-
-            // Convert the challenge into a UInt8Array
-            const challengeArray = new Uint8Array(challenge);
-
-            // Create the PublicKeyCredentialRequestOptions
-            const options = {
-                publicKey: {
-                    challenge: challengeArray,
-                    allowCredentials: [
-                        {
-                            id: publicKeyArray,
-                            type: 'public-key',
-                        },
-                    ],
-                },
-            };
-
-            // Call the WebAuthn API to get the assertion
-            return navigator.credentials.get(options);
-        })
-        .then((assertion) => {
-            // Send the authentication response to the server
-            return fetch('/authenticate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: assertion.id,
-                    response: assertion.response,
-                }),
-            });
-        })
-        .then((response) => response.json())
-        .then((data) => {
-            console.log('Authentication successful:', data);
-        })
-        .catch((error) => {
-            console.error('Authentication failed:', error);
-        });
-}
-
-function generateRandomBuffer(length) {
-    const array = new Uint8Array(length);
-    window.crypto.getRandomValues(array);
-    return array.buffer;
-}
-
-function base64ToArrayBuffer(base64) {
-    const binaryString = window.btoa(base64);
-    const length = binaryString.length;
-    const buffer = new ArrayBuffer(length);
-    const array = new Uint8Array(buffer);
-
-    for (let i = 0; i < length; i++) {
-        array[i] = binaryString.charCodeAt(i);
-    }
-
-    return buffer;
-}
-
-function arrayBufferToBase64(arrayBuffer) {
-    const binary = String.fromCharCode.apply(null, new Uint8Array(arrayBuffer));
-    return window.btoa(binary);
-}
+});
